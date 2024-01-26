@@ -18,6 +18,8 @@ from model import JointTextImageModel, JointTextImageDialogueModel, \
     MultimodalFakeNewsDetectionModel, MultimodalFakeNewsDetectionModelWithDialogue, \
     PrintCallback
 
+torch.set_float32_matmul_precision('medium')
+
 # Multiprocessing for dataset batching: NUM_CPUS=24 on Yale Tangra server
 # Set to 0 and comment out torch.multiprocessing line if multiprocessing gives errors
 NUM_CPUS = 0
@@ -62,9 +64,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     config = {}
-    if args.config is not "":
+    if args.config != "":
         with open(str(args.config), "r") as yaml_file:
-            config = yaml.load(yaml_file)
+            config = yaml.safe_load(yaml_file)
 
     # pylint: disable=multiple-statements
     if not args.modality: args.modality = config.get("modality", "text-image")
@@ -134,8 +136,7 @@ if __name__ == "__main__":
         # Use all specified GPUs with data parallel strategy
         # https://pytorch-lightning.readthedocs.io/en/latest/advanced/multi_gpu.html#data-parallel
         trainer = pl.Trainer(
-            gpus=args.gpus,
-            strategy="dp",
+            strategy="auto",
             callbacks=callbacks,
         )
     else:

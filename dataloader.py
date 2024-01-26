@@ -50,6 +50,17 @@ class MultimodalDataset(Dataset):
         images_dir=IMAGES_DIR
     ):
         df = None
+        self.dataset_type = dataset_type
+        self.dir_to_save_dataframe = dir_to_save_dataframe
+        self.saved_dataframe_filename_prefix = ""
+        if Modality(modality) == Modality.TEXT:
+            self.saved_dataframe_filename_prefix = "text"
+        elif Modality(modality) == Modality.IMAGE:
+            self.saved_dataframe_filename_prefix = "image"
+        elif Modality(modality) == Modality.TEXT_IMAGE:
+            self.saved_dataframe_filename_prefix = "text_image"
+        elif Modality(modality) == Modality.TEXT_IMAGE_DIALOGUE:
+            self.saved_dataframe_filename_prefix = "text_image_dialogue"
         if not from_preprocessed_dataframe:
             # This is the first time this data is being setup, so we run full preprocessing
             df = pd.read_csv(data_path, sep='\t', header=0)
@@ -100,18 +111,6 @@ class MultimodalDataset(Dataset):
             self.summarizer = transformers.pipeline("summarization", model=summarization_model)
         elif Modality(modality) == Modality.TEXT_IMAGE_DIALOGUE:
             self.summarizer = transformers.pipeline("summarization")
-
-        self.dataset_type = dataset_type
-        self.dir_to_save_dataframe = dir_to_save_dataframe
-        self.saved_dataframe_filename_prefix = ""
-        if Modality(modality) == Modality.TEXT:
-            self.saved_dataframe_filename_prefix = "text"
-        elif Modality(modality) == Modality.IMAGE:
-            self.saved_dataframe_filename_prefix = "image"
-        elif Modality(modality) == Modality.TEXT_IMAGE:
-            self.saved_dataframe_filename_prefix = "text_image"
-        elif Modality(modality) == Modality.TEXT_IMAGE_DIALOGUE:
-            self.saved_dataframe_filename_prefix = "text_image_dialogue"
 
         return
 
@@ -188,6 +187,7 @@ class MultimodalDataset(Dataset):
 
         # Save this dataframe into a pickle
         # Filename will look something like "train__text_image_dialogue__dataframe.pkl"
+        print(f"{self.dataset_type=}")
         filename = "__".join([self.dataset_type, self.saved_dataframe_filename_prefix, "dataframe.pkl"])
         save_path = os.path.join(self.dir_to_save_dataframe, filename)
         df.to_pickle(save_path)

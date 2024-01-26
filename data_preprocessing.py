@@ -18,7 +18,7 @@ from model import JointTextImageModel, JointTextImageDialogueModel
 from sentence_transformers import SentenceTransformer
 
 DATA_PATH = "./data"
-IMAGES_DIR = os.path.join(DATA_PATH, "images")
+IMAGES_DIR = os.path.join(DATA_PATH, "public_image_set")
 TRAIN_DATA_SIZE = 10000
 TEST_DATA_SIZE = 1000
 
@@ -36,10 +36,10 @@ if __name__ == "__main__":
     config = {}
     if args.config is not "":
         with open(str(args.config), "r") as yaml_file:
-            config = yaml.load(yaml_file)
+            config = yaml.safe_load(yaml_file)
 
-    args.train_data_path = config.get("train_data_path", os.path.join(DATA_PATH, "multimodal_train_" + str(TRAIN_DATA_SIZE) + ".tsv"))
-    args.test_data_path = config.get("test_data_path", os.path.join(DATA_PATH, "multimodal_test_" + str(TEST_DATA_SIZE) + ".tsv"))
+    args.train_data_path = config.get("train_data_path", os.path.join(DATA_PATH, "multimodal_train.tsv"))
+    args.test_data_path = config.get("test_data_path", os.path.join(DATA_PATH, "multimodal_test_public.tsv"))
     args.modality = config.get("modality", "text-image")
     args.num_classes = config.get("num_classes", 2)
     args.text_embedder = config.get("text_embedder", "all-mpnet-base-v2")
