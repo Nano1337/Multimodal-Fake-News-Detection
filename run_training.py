@@ -10,6 +10,7 @@ import torch
 from torch.utils.data import DataLoader
 
 import pytorch_lightning as pl
+from pytorch_lightning.loggers import WandbLogger
 
 from sentence_transformers import SentenceTransformer
 
@@ -19,6 +20,7 @@ from model import JointTextImageModel, JointTextImageDialogueModel, \
     PrintCallback
 
 torch.set_float32_matmul_precision('medium')
+
 
 # Multiprocessing for dataset batching: NUM_CPUS=24 on Yale Tangra server
 # Set to 0 and comment out torch.multiprocessing line if multiprocessing gives errors
@@ -30,7 +32,7 @@ IMAGES_DIR = os.path.join(DATA_PATH, "images")
 TRAIN_DATA_SIZE = 10000
 TEST_DATA_SIZE = 1000
 SENTENCE_TRANSFORMER_EMBEDDING_DIM = 768
-DEFAULT_GPUS = [0, 1]
+DEFAULT_GPUS = [0]
 
 logging.basicConfig(level=logging.INFO) # DEBUG, INFO, WARNING, ERROR, CRITICAL
 
@@ -132,12 +134,14 @@ if __name__ == "__main__":
 
     trainer = None
     callbacks = [PrintCallback()]
+    wandb_logger = WandbLogger(log_model="all")
     if torch.cuda.is_available():
-        # Use all specified GPUs with data parallel strategy
-        # https://pytorch-lightning.readthedocs.io/en/latest/advanced/multi_gpu.html#data-parallel
+        # call pytorch lightning trainer 
         trainer = pl.Trainer(
             strategy="auto",
             callbacks=callbacks,
+            max_epochs=5, 
+            logger = wandb_logger,
         )
     else:
         trainer = pl.Trainer(

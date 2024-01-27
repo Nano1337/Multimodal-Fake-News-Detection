@@ -118,7 +118,10 @@ class MultimodalFakeNewsDetectionModel(pl.LightningModule):
         text, image, label = batch["text"], batch["image"], batch["label"]
 
         pred, loss = self.model(text, image, label)
-        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        pred_label = torch.argmax(pred, dim=1)
+        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=False, logger=True)
+        accuracy = torch.sum(pred_label == label).item() / (len(label) * 1.0)
+        self.log("train_acc", accuracy, on_step=True, on_epoch=True, logger=True)
         print(loss.item())
         losses.append(loss.item())
         return loss
@@ -144,6 +147,7 @@ class MultimodalFakeNewsDetectionModel(pl.LightningModule):
             'test_loss': loss,
             'test_acc': torch.tensor(accuracy).cuda()
         }
+        
         print(loss.item(), output['test_acc'])
         return output
 

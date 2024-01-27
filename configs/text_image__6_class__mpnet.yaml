@@ -9,6 +9,8 @@ trained_model_version: "version_87"
 trained_model_path: null
 gpus: [0]
 train_data_path: "./data/multimodal_train.tsv"
+val_data_path: "./data/multimodal_validate.tsv"
 test_data_path: "./data/multimodal_test_public.tsv"
 preprocessed_train_dataframe_path: "./data/train__text_image_dataframe.pkl"
+preprocessed_val_dataframe_path: "./data/val__text_image_dataframe.pkl"
 preprocessed_test_dataframe_path: "./data/test__text_image_dataframe.pkl"

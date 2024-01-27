@@ -27,7 +27,8 @@ logging.basicConfig(level=logging.INFO) # DEBUG, INFO, WARNING, ERROR, CRITICAL
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--train", action="store_true", help="Running on training data")
-    parser.add_argument("--test", action="store_true", help="Running on test (evaluation) data")
+    parser.add_argument("--test", action="store_true", help="Running on test data")
+    parser.add_argument("--val", action="store_true", help="Running on validation data")
     parser.add_argument("--from_dialogue_dataframe", type=str, default=None, help="If you're using dialogue (comment) data and have already filtered the dialogue dataframe, pass the path to its serialized .pkl file to continue preprocessing from that point on")
     parser.add_argument("--dir_to_save_dataframe", type=str, default="data", help="Path to store saved dataframe .pkl file after data preprocessing")
     parser.add_argument("--config", type=str, default="", help="config.yaml file with experiment configuration")
@@ -39,6 +40,7 @@ if __name__ == "__main__":
             config = yaml.safe_load(yaml_file)
 
     args.train_data_path = config.get("train_data_path", os.path.join(DATA_PATH, "multimodal_train.tsv"))
+    args.val_data_path = config.get("val_data_path", os.path.join(DATA_PATH, "multimodal_validate.tsv"))
     args.test_data_path = config.get("test_data_path", os.path.join(DATA_PATH, "multimodal_test_public.tsv"))
     args.modality = config.get("modality", "text-image")
     args.num_classes = config.get("num_classes", 2)
@@ -74,8 +76,25 @@ if __name__ == "__main__":
         logging.info("Train dataset size: {}".format(len(train_dataset)))
         logging.info(train_dataset)
 
+    if args.val: 
+        # see train comment above
+        val_dataset = MultimodalDataset(
+            from_dialogue_dataframe=args.from_dialogue_dataframe,
+            data_path=args.val_data_path,
+            dir_to_save_dataframe=args.dir_to_save_dataframe,
+            dataset_type="val",
+            modality=args.modality,
+            text_embedder=text_embedder,
+            image_transform=image_transform,
+            summarization_model=args.dialogue_summarization_model,
+            images_dir=IMAGES_DIR,
+            num_classes=args.num_classes
+        )
+        logging.info("Validation dataset size: {}".format(len(val_dataset)))
+        logging.info(val_dataset)
+
     if args.test:
-        # See comment above
+        # See train comment above
         test_dataset = MultimodalDataset(
             from_dialogue_dataframe=args.from_dialogue_dataframe,
             data_path=args.test_data_path,

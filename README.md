@@ -82,3 +82,11 @@ We train on two NVIDIA K80 GPUs with Driver version 465.19.01 and CUDA version 1
 We ran hyperparameter tuning and found that learning rates of `1e-3` and `1e-5` caused the loss to not decrease. We also found that using SGD as our optimizer (both with and without momentum) caused the loss to not decrease.
 
 Our results are presented in the paper, which is also available in this repo at `./paper.pdf`.
+
+### Extra Notes: 
+
+Train dataset size: 563612
+
+Val dataset size: 59299
+
+Test dataset size: 59271

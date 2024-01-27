@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.INFO) # DEBUG, INFO, WARNING, ERROR, CRITICAL
 
 DATA_PATH = "./data"
 PL_ASSETS_PATH = "./lightning_logs"
-IMAGES_DIR = os.path.join(DATA_PATH, "images")
+IMAGES_DIR = os.path.join(DATA_PATH, "public_image_set")
 IMAGE_EXTENSION = ".jpg"
 
 class Modality(enum.Enum):
@@ -85,6 +85,7 @@ class MultimodalDataset(Dataset):
                 df = from_preprocessed_dataframe
             elif isinstance(from_preprocessed_dataframe, str):
                 df = pd.read_pickle(from_preprocessed_dataframe)
+
             else:
                 raise Exception("MultimodalDataset given invalid from_preprocessed_dataframe arg; \
                                  Must be path (str) to dataframe or pd.DataFrame")

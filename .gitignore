@@ -8,3 +8,4 @@ old_requirements.txt
 __pycache__/*
 data/*
 menv/
+wandb/ 
