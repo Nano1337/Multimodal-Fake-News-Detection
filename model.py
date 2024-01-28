@@ -1,5 +1,4 @@
 import os
-import logging
 
 import torch
 import torch.nn as nn
@@ -29,7 +28,6 @@ SENTENCE_TRANSFORMER_EMBEDDING_DIM = 768
 
 losses = []
 
-logging.basicConfig(level=logging.INFO) # DEBUG, INFO, WARNING, ERROR, CRITICAL
 
 print("CUDA available:", torch.cuda.is_available())
 
@@ -112,30 +110,41 @@ class MultimodalFakeNewsDetectionModel(pl.LightningModule):
 
     # Required for pl.LightningModule
     def training_step(self, batch, batch_idx):
-        global losses
-        # pl.Lightning convention: training_step() defines prediction and
-        # accompanying loss for training, independent of forward()
+
+        # Extract text, image, and label from the batch
         text, image, label = batch["text"], batch["image"], batch["label"]
 
+        # Get predictions and loss from the model
         pred, loss = self.model(text, image, label)
+
+        # Calculate accuracy
         pred_label = torch.argmax(pred, dim=1)
+        accuracy = torch.mean((pred_label == label).float())
+
+        # Log loss and accuracy
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=False, logger=True)
-        accuracy = torch.sum(pred_label == label).item() / (len(label) * 1.0)
-        self.log("train_acc", accuracy, on_step=True, on_epoch=True, logger=True)
-        print(loss.item())
-        losses.append(loss.item())
+        self.log("train_acc", accuracy, on_step=True, on_epoch=True, prog_bar=False, logger=True)
+
+        # Return the loss
         return loss
 
-    # Optional for pl.LightningModule
-    def training_step_end(self, batch_parts):
-        """
-        Aggregates results when training using a strategy that splits data
-        from each batch across GPUs (e.g. data parallel)
+    def validation_step(self, batch, batch_idx): 
+                # Extract text, image, and label from the batch
+        text, image, label = batch["text"], batch["image"], batch["label"]
 
-        Note that training_step returns a loss, thus batch_parts returns a list
-        of 2 loss values (since there are 2 GPUs being used)
-        """
-        return sum(batch_parts) / len(batch_parts)
+        # Get predictions and loss from the model
+        pred, loss = self.model(text, image, label)
+
+        # Calculate accuracy
+        pred_label = torch.argmax(pred, dim=1)
+        accuracy = torch.mean((pred_label == label).float())
+
+        # Log loss and accuracy
+        self.log("val_loss", loss, on_step=True, on_epoch=True, prog_bar=False, logger=True)
+        self.log("val_acc", accuracy, on_step=True, on_epoch=True, prog_bar=False, logger=True)
+
+        # Return the loss
+        return loss
 
     # Optional for pl.LightningModule
     def test_step(self, batch, batch_idx):

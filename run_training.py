@@ -1,5 +1,4 @@
 import os
-import logging
 import argparse
 
 # pylint: disable=import-error
@@ -24,19 +23,20 @@ torch.set_float32_matmul_precision('medium')
 
 # Multiprocessing for dataset batching: NUM_CPUS=24 on Yale Tangra server
 # Set to 0 and comment out torch.multiprocessing line if multiprocessing gives errors
-NUM_CPUS = 0
-# torch.multiprocessing.set_start_method('spawn')
+NUM_CPUS = 8
 
 DATA_PATH = "./data"
-IMAGES_DIR = os.path.join(DATA_PATH, "images")
+IMAGES_DIR = os.path.join(DATA_PATH, "public_image_set")
 TRAIN_DATA_SIZE = 10000
 TEST_DATA_SIZE = 1000
 SENTENCE_TRANSFORMER_EMBEDDING_DIM = 768
 DEFAULT_GPUS = [0]
 
-logging.basicConfig(level=logging.INFO) # DEBUG, INFO, WARNING, ERROR, CRITICAL
 
 if __name__ == "__main__":
+
+    torch.multiprocessing.set_start_method('spawn')
+
     # pylint: disable=line-too-long
     parser = argparse.ArgumentParser()
     parser.add_argument("--train", action="store_true", help="Running on training data")
@@ -60,39 +60,45 @@ if __name__ == "__main__":
     parser.add_argument("--text_embedder", type=str, default=None, help="all-mpnet-base-v2 | all-distilroberta-v1")
     parser.add_argument("--dialogue_summarization_model", type=str, default=None, help="None=Transformers.Pipeline default i.e. sshleifer/distilbart-cnn-12-6 | bart-large-cnn | t5-small | t5-base | t5-large")
     parser.add_argument("--train_data_path", type=str, default=None)
+    parser.add_argument("--val_data_path", type=str, default=None)
     parser.add_argument("--test_data_path", type=str, default=None)
     parser.add_argument("--preprocessed_train_dataframe_path", type=str, default=None)
+    parser.add_argument("--preprocessed_val_dataframe_path", type=str, default=None)
     parser.add_argument("--preprocessed_test_dataframe_path", type=str, default=None)
     args = parser.parse_args()
 
-    config = {}
-    if args.config != "":
-        with open(str(args.config), "r") as yaml_file:
+    # Load configuration from YAML file if specified
+    if args.config:
+        with open(args.config, "r") as yaml_file:
             config = yaml.safe_load(yaml_file)
+    else:
+        config = {}
 
-    # pylint: disable=multiple-statements
-    if not args.modality: args.modality = config.get("modality", "text-image")
-    if not args.num_classes: args.num_classes = config.get("num_classes", 2)
-    if not args.batch_size: args.batch_size = config.get("batch_size", 32)
-    if not args.learning_rate: args.learning_rate = config.get("learning_rate", 1e-4)
-    if not args.num_epochs: args.num_epochs = config.get("num_epochs", 10)
-    if not args.dropout_p: args.dropout_p = config.get("dropout_p", 0.1)
+    # Update args with config values if not already set by command line arguments
+    for key, default_value in [
+        ("modality", "text-image"),
+        ("num_classes", 2),
+        ("batch_size", 32),
+        ("learning_rate", 1e-4),
+        ("num_epochs", 10),
+        ("dropout_p", 0.1),
+        ("text_embedder", "all-mpnet-base-v2"),
+        ("dialogue_summarization_model", "bart-large-cnn"),
+        ("train_data_path", os.path.join(DATA_PATH, f"multimodal_train_{TRAIN_DATA_SIZE}.tsv")),
+        ("val_data_path", os.path.join(DATA_PATH, f"multimodal_validate.tsv")),
+        ("test_data_path", os.path.join(DATA_PATH, f"multimodal_test_{TEST_DATA_SIZE}.tsv")),
+        ("preprocessed_train_dataframe_path", None),
+        ("preprocessed_val_dataframe_path", "val__text_image_dataframe.pkl"),
+        ("preprocessed_test_dataframe_path", None)
+    ]:
+        if getattr(args, key, None) is None:
+            setattr(args, key, config.get(key, default_value))
+
+    # Special handling for 'gpus' because it needs to be converted from string to list[int]
     if args.gpus:
         args.gpus = [int(gpu_num) for gpu_num in args.gpus.split(",")]
     else:
         args.gpus = config.get("gpus", DEFAULT_GPUS)
-    if not args.text_embedder:
-        args.text_embedder = config.get("text_embedder", "all-mpnet-base-v2")
-    if not args.dialogue_summarization_model:
-        args.dialogue_summarization_model = config.get("dialogue_summarization_model", "bart-large-cnn")
-    if not args.train_data_path:
-        args.train_data_path = config.get("train_data_path", os.path.join(DATA_PATH, "multimodal_train_" + str(TRAIN_DATA_SIZE) + ".tsv"))
-    if not args.test_data_path:
-        args.test_data_path = config.get("test_data_path", os.path.join(DATA_PATH, "multimodal_test_" + str(TEST_DATA_SIZE) + ".tsv"))
-    if not args.preprocessed_train_dataframe_path:
-        args.preprocessed_train_dataframe_path = config.get("preprocessed_train_dataframe_path", None)
-    if not args.preprocessed_test_dataframe_path:
-        args.preprocessed_test_dataframe_path = config.get("preprocessed_test_dataframe_path", None)
 
     text_embedder = SentenceTransformer(args.text_embedder)
     image_transform = None # pylint: disable=invalid-name
@@ -111,15 +117,35 @@ if __name__ == "__main__":
         images_dir=IMAGES_DIR,
         num_classes=args.num_classes
     )
-    logging.info("Train dataset size: {}".format(len(train_dataset)))
-    logging.info(train_dataset)
+    print("Train dataset size: {}".format(len(train_dataset)))
+
+    val_dataset = MultimodalDataset(
+        from_preprocessed_dataframe=args.preprocessed_val_dataframe_path,
+        data_path=args.val_data_path,
+        modality=args.modality,
+        text_embedder=text_embedder,
+        image_transform=image_transform,
+        summarization_model=args.dialogue_summarization_model,
+        images_dir=IMAGES_DIR,
+        num_classes=args.num_classes
+    )
+    print("Val dataset size: {}".format(len(val_dataset)))
 
     train_loader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
-        num_workers=NUM_CPUS
+        num_workers=NUM_CPUS, 
+        persistent_workers=True,
+        prefetch_factor = 4,
     )
-    logging.info(train_loader)
+
+    val_loader = DataLoader(
+        val_dataset, 
+        batch_size=args.batch_size, 
+        num_workers=NUM_CPUS, 
+        persistent_workers=True,
+        prefetch_factor = 4,
+    )
 
     hparams = {
         "embedding_dim": SENTENCE_TRANSFORMER_EMBEDDING_DIM,
@@ -140,13 +166,16 @@ if __name__ == "__main__":
         trainer = pl.Trainer(
             strategy="auto",
             callbacks=callbacks,
-            max_epochs=5, 
+            max_epochs=args.num_epochs, 
             logger = wandb_logger,
         )
     else:
         trainer = pl.Trainer(
             callbacks=callbacks
         )
-    logging.info(trainer)
 
-    trainer.fit(model, train_loader)
+    trainer.fit(
+        model, 
+        train_dataloaders=train_loader, 
+        val_dataloaders=val_loader,
+    )

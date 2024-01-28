@@ -1,14 +1,14 @@
 import sys
 import os
 from pathlib import Path
-import logging
 import argparse
 import enum
 
 import pandas as pd
 from tqdm import tqdm
 
-from PIL import Image
+from PIL import ImageFile, Image
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 import torch
 import torch.nn as nn
@@ -16,7 +16,6 @@ from torch.utils.data import Dataset, DataLoader
 
 import transformers
 
-logging.basicConfig(level=logging.INFO) # DEBUG, INFO, WARNING, ERROR, CRITICAL
 
 DATA_PATH = "./data"
 PL_ASSETS_PATH = "./lightning_logs"
@@ -65,8 +64,6 @@ class MultimodalDataset(Dataset):
             # This is the first time this data is being setup, so we run full preprocessing
             df = pd.read_csv(data_path, sep='\t', header=0)
             df = self._preprocess_df(df)
-            logging.debug(df.columns)
-            logging.debug(df['clean_title'])
 
             # Run dialogue preprocessing, if needed
             if Modality(modality) == Modality.TEXT_IMAGE_DIALOGUE:
@@ -92,7 +89,6 @@ class MultimodalDataset(Dataset):
 
         self.data_frame = df
         self.text_ids = set(self.data_frame['id'])
-        logging.debug(self.data_frame)
 
         self.modality = modality
         self.label = "2_way_label"
@@ -193,7 +189,6 @@ class MultimodalDataset(Dataset):
         save_path = os.path.join(self.dir_to_save_dataframe, filename)
         df.to_pickle(save_path)
         print("Preprocessed dataframe saved to {}".format(save_path))
-        logging.info("Preprocessed dataframe saved to {}".format(save_path))
 
         return df
 
@@ -247,12 +242,6 @@ class MultimodalDataset(Dataset):
             # Save final dialogue dataframe
             self.data_frame.to_pickle(save_path)
             print("Preprocessed dialogue dataframe saved to {}".format(save_path))
-            logging.info("Preprocessed dialogue dataframe saved to {}".format(save_path))
-
-            logging.debug(self.data_frame)
-            logging.debug(self.data_frame['comment_summary'])
-            logging.debug("num_failed:", len(failed_ids))
-            logging.debug(failed_ids)
 
         if from_saved_df_path != "":
             # Special Case (see above comment in __init__)
@@ -260,7 +249,6 @@ class MultimodalDataset(Dataset):
             generate_summaries_and_save_df(df, save_path=save_path)
         else:
             df = pd.read_csv("./data/all_comments.tsv", sep='\t')
-            logging.debug(df)
 
             def text_exists(row):
                 """ Ensures that a comment's corresponding text exists """
@@ -278,7 +266,6 @@ class MultimodalDataset(Dataset):
             df['comment_deleted'] = df.apply(lambda row: comment_deleted(row), axis=1)
             df = df[df['comment_deleted'] == False].drop('comment_deleted', axis=1)
             df.reset_index(drop=True, inplace=True)
-            logging.debug(df)
 
             # Save dataframe so far before summary generation
             df.to_pickle(save_path)
