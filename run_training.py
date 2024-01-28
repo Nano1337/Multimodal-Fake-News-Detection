@@ -7,17 +7,20 @@ import yaml
 
 import torch
 from torch.utils.data import DataLoader
+torch.backends.cudnn.deterministic = True 
+torch.backends.cudnn.benchmark = False
 
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning import seed_everything 
 
 from sentence_transformers import SentenceTransformer
 
 from dataloader import MultimodalDataset, Modality
-# for the default implementation, use model.py
-# TODO: write joint_model.py
+# for the default implementation, use model.py | model_ensemble.py | model_joint.py
 from model_ensemble import *
 torch.set_float32_matmul_precision('medium')
+seed_everything(seed=0, workers=True)
 
 
 # Multiprocessing for dataset batching
@@ -30,7 +33,6 @@ TRAIN_DATA_SIZE = 10000
 TEST_DATA_SIZE = 1000
 SENTENCE_TRANSFORMER_EMBEDDING_DIM = 768
 DEFAULT_GPUS = [0]
-
 
 if __name__ == "__main__":
 
@@ -130,16 +132,39 @@ if __name__ == "__main__":
     )
     print("Val dataset size: {}".format(len(val_dataset)))
 
+    test_dataset = MultimodalDataset(
+        from_preprocessed_dataframe=args.preprocessed_test_dataframe_path,
+        data_path=args.test_data_path,
+        modality=args.modality,
+        text_embedder=text_embedder,
+        image_transform=image_transform,
+        summarization_model=args.dialogue_summarization_model,
+        images_dir=IMAGES_DIR,
+        num_classes=args.num_classes
+    )
+    print("Test dataset size: {}".format(len(test_dataset)))
+
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
         num_workers=NUM_CPUS, 
         persistent_workers=True,
         prefetch_factor = 4,
+        collate_fn=train_dataset.collate_fn
     )
 
     val_loader = DataLoader(
         val_dataset, 
+        batch_size=args.batch_size, 
+        num_workers=NUM_CPUS, 
+        persistent_workers=True,
+        prefetch_factor = 4,
+        collate_fn=val_dataset.collate_fn
+    )
+
+    test_loader = DataLoader(
+        test_dataset, 
         batch_size=args.batch_size, 
         num_workers=NUM_CPUS, 
         persistent_workers=True,
@@ -167,6 +192,10 @@ if __name__ == "__main__":
             callbacks=callbacks,
             max_epochs=args.num_epochs, 
             logger = wandb_logger,
+            deterministic=True, 
+            default_root_dir="ckpts/",  
+            precision="bf16-mixed",
+            num_sanity_val_steps=0,
         )
     else:
         trainer = pl.Trainer(
@@ -177,4 +206,9 @@ if __name__ == "__main__":
         model, 
         train_dataloaders=train_loader, 
         val_dataloaders=val_loader,
+    )
+
+    trainer.test(
+        model,
+        dataloaders=test_loader
     )

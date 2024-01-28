@@ -12,9 +12,9 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 from sentence_transformers import SentenceTransformer
 
-import transformers
+from transformers import DistilBertForSequenceClassification
 
-NUM_CLASSES = 2
+NUM_CLASSES = 6
 BATCH_SIZE = 32
 LEARNING_RATE = 1e-4
 DROPOUT_P = 0.1
@@ -57,15 +57,6 @@ class JointTextImageModel(nn.Module):
         self.loss_fn = loss_fn
         self.dropout = torch.nn.Dropout(dropout_p)
 
-        self.text_model = nn.Sequential(
-            self.text_module, 
-            nn.ReLU(), 
-            self.fc1_text,
-            nn.ReLU(), 
-            self.dropout, 
-            self.fc2_text,
-        )
-
         self.image_model = nn.Sequential(
             self.image_module, 
             nn.ReLU(), 
@@ -77,7 +68,7 @@ class JointTextImageModel(nn.Module):
 
     def forward(self, text, image, label):
         image_logits = self.image_model(image)
-        text_logits = self.text_model(text)
+        text_logits = self.text_module(**text).logits
 
         # nn.CrossEntropyLoss expects raw logits as model output, NOT torch.nn.functional.softmax(logits, dim=1)
         # https://pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html
@@ -116,9 +107,20 @@ class MultimodalFakeNewsDetectionModel(pl.LightningModule):
 
         self.model = self._build_model()
 
+        self.val_metrics = {
+            "val_loss": [],
+            "val_acc": [],
+        }
+
+        self.test_metrics = {
+            "test_loss": [],
+            "test_acc": [],
+        }
+
     # Required for pl.LightningModule
     def forward(self, text, image, label):
         # pl.Lightning convention: forward() defines prediction for inference
+
         return self.model(text, image, label)
 
     # Required for pl.LightningModule
@@ -175,44 +177,59 @@ class MultimodalFakeNewsDetectionModel(pl.LightningModule):
         self.log("text_val_loss", text_loss, on_step=True, on_epoch=True, prog_bar=False, logger=True)
         self.log("text_val_acc", text_acc, on_step=True, on_epoch=True, prog_bar=False, logger=True)
 
-        # Return the loss
+        self.val_metrics["val_loss"].append(avg_loss)
+        self.val_metrics["val_acc"].append(joint_acc)
+
         return avg_loss
+
+    def on_validation_epoch_end(self):
+        avg_loss = torch.stack(self.val_metrics["val_loss"]).mean()
+        avg_accuracy = torch.stack(self.val_metrics["val_acc"]).mean()
+
+        self.log("avg_val_loss", avg_loss, on_step=False, on_epoch=True, prog_bar=False, logger=True)
+        self.log("avg_val_acc", avg_accuracy, on_step=False, on_epoch=True, prog_bar=False, logger=True)
+
+        self.val_metrics["val_loss"].clear()
+        self.val_metrics["val_acc"].clear()
 
     # Optional for pl.LightningModule
     def test_step(self, batch, batch_idx):
+        # Extract text, image, and label from the batch
         text, image, label = batch["text"], batch["image"], batch["label"]
-        pred, loss = self.model(text, image, label)
-        pred_label = torch.argmax(pred, dim=1)
-        accuracy = torch.sum(pred_label == label).item() / (len(label) * 1.0)
-        output = {
-            'test_loss': loss,
-            'test_acc': torch.tensor(accuracy).cuda()
-        }
+
+        # Get predictions and loss from the model
+        image_logits, text_logits, image_loss, text_loss = self.model(text, image, label)
+
+        # Calculate accuracy
+        image_acc = torch.mean((torch.argmax(image_logits, dim=1) == label).float())
+        text_acc = torch.mean((torch.argmax(text_logits, dim=1) == label).float())
+        avg_logits = (image_logits + text_logits) / 2
+        joint_acc = torch.mean((torch.argmax(avg_logits, dim=1) == label).float())
+        avg_loss = (image_loss + text_loss) / 2
+
+        self.test_metrics["test_loss"].append(avg_loss)
+        self.test_metrics["test_acc"].append(joint_acc)
         
-        print(loss.item(), output['test_acc'])
-        return output
+        self.log("test_loss", avg_loss, on_step=True, on_epoch=True, prog_bar=False, logger=True)
+        self.log("test_acc", joint_acc, on_step=True, on_epoch=True, prog_bar=False, logger=True)
+        
+        self.log("image_test_loss", image_loss, on_step=True, on_epoch=True, prog_bar=False, logger=True)
+        self.log("image_test_acc", image_acc, on_step=True, on_epoch=True, prog_bar=False, logger=True)
+        self.log("text_test_loss", text_loss, on_step=True, on_epoch=True, prog_bar=False, logger=True)
+        self.log("text_test_acc", text_acc, on_step=True, on_epoch=True, prog_bar=False, logger=True)
+
+        return avg_loss
 
     # Optional for pl.LightningModule
-    def test_epoch_end(self, outputs):
-        avg_loss = torch.stack([x["test_loss"] for x in outputs]).mean()
-        avg_accuracy = torch.stack([x["test_acc"] for x in outputs]).mean()
-        logs = {
-            'test_loss': avg_loss,
-            'test_acc': avg_accuracy
-        }
+    def on_test_epoch_end(self):
+        avg_loss = torch.stack(self.test_metrics["test_loss"]).mean()
+        avg_accuracy = torch.stack(self.test_metrics["test_acc"]).mean()
 
-        # pl.LightningModule has some issues displaying the results automatically
-        # As a workaround, we can store the result logs as an attribute of the
-        # class instance and display them manually at the end of testing
-        # https://github.com/PyTorchLightning/pytorch-lightning/issues/1088
-        self.test_results = logs
+        self.log("avg_test_loss", avg_loss, on_step=False, on_epoch=True, prog_bar=False, logger=True)
+        self.log("avg_test_acc", avg_accuracy, on_step=False, on_epoch=True, prog_bar=False, logger=True)
 
-        return {
-            'avg_test_loss': avg_loss,
-            'avg_test_acc': avg_accuracy,
-            'log': logs,
-            'progress_bar': logs
-        }
+        self.test_metrics["test_loss"].clear()
+        self.test_metrics["test_acc"].clear()
 
     # Required for pl.LightningModule
     def configure_optimizers(self):
@@ -221,9 +238,7 @@ class MultimodalFakeNewsDetectionModel(pl.LightningModule):
         return optimizer
 
     def _build_model(self):
-        text_module = torch.nn.Linear(
-            in_features=self.embedding_dim, out_features=self.text_feature_dim)
-
+        text_module = DistilBertForSequenceClassification.from_pretrained("distilbert-base-uncased", num_labels=NUM_CLASSES)
         image_module = torchvision.models.resnet152(pretrained=True)
         # Overwrite last layer to get features (rather than classification)
         image_module.fc = torch.nn.Linear(

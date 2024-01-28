@@ -114,6 +114,16 @@ class MultimodalFakeNewsDetectionModel(pl.LightningModule):
         self.text_feature_dim = self.hparams.get("text_feature_dim", 300)
         self.image_feature_dim = self.hparams.get("image_feature_dim", self.text_feature_dim)
 
+        self.val_metrics = {
+            "val_loss": [], 
+            "val_acc": [],
+        }
+
+        self.test_metrics = {
+            "test_loss": [], 
+            "test_acc": [],
+        }
+
         self.model = self._build_model()
 
     # Required for pl.LightningModule
@@ -144,7 +154,7 @@ class MultimodalFakeNewsDetectionModel(pl.LightningModule):
         self.log("text_train_acc", text_acc, on_step=True, on_epoch=True, prog_bar=False, logger=True)
 
         # Return the loss
-        return avg_loss
+        return loss
 
     def validation_step(self, batch, batch_idx): 
 
@@ -167,44 +177,59 @@ class MultimodalFakeNewsDetectionModel(pl.LightningModule):
         self.log("image_val_acc", image_acc, on_step=True, on_epoch=True, prog_bar=False, logger=True)
         self.log("text_val_acc", text_acc, on_step=True, on_epoch=True, prog_bar=False, logger=True)
 
+        self.val_metrics["val_loss"].append(loss)
+        self.val_metrics["val_acc"].append(joint_acc)
+
         # Return the loss
-        return avg_loss
+        return loss
+    
+    def on_validation_epoch_end(self) -> None:
+        avg_loss = torch.stack(self.val_metrics["val_loss"]).mean()
+        avg_acc = torch.stack(self.val_metrics["val_acc"]).mean()
+
+        self.log("val_loss", avg_loss, on_step=False, on_epoch=True, prog_bar=False, logger=True)
+        self.log("val_acc", avg_acc, on_step=False, on_epoch=True, prog_bar=False, logger=True)
+        
+        self.val_metrics["val_loss"].clear()
+        self.val_metrics["val_acc"].clear()
 
     # Optional for pl.LightningModule
     def test_step(self, batch, batch_idx):
+
+        # Extract text, image, and label from the batch
         text, image, label = batch["text"], batch["image"], batch["label"]
-        pred, loss = self.model(text, image, label)
-        pred_label = torch.argmax(pred, dim=1)
-        accuracy = torch.sum(pred_label == label).item() / (len(label) * 1.0)
-        output = {
-            'test_loss': loss,
-            'test_acc': torch.tensor(accuracy).cuda()
-        }
-        
-        print(loss.item(), output['test_acc'])
-        return output
 
-    # Optional for pl.LightningModule
-    def test_epoch_end(self, outputs):
-        avg_loss = torch.stack([x["test_loss"] for x in outputs]).mean()
-        avg_accuracy = torch.stack([x["test_acc"] for x in outputs]).mean()
-        logs = {
-            'test_loss': avg_loss,
-            'test_acc': avg_accuracy
-        }
+        # Get predictions and loss from the model
+        image_logits, text_logits, avg_logits, loss = self.model(text, image, label)
 
-        # pl.LightningModule has some issues displaying the results automatically
-        # As a workaround, we can store the result logs as an attribute of the
-        # class instance and display them manually at the end of testing
-        # https://github.com/PyTorchLightning/pytorch-lightning/issues/1088
-        self.test_results = logs
+        # Calculate accuracy
+        image_acc = torch.mean((torch.argmax(image_logits, dim=1) == label).float())
+        text_acc = torch.mean((torch.argmax(text_logits, dim=1) == label).float())
+        joint_acc = torch.mean((torch.argmax(avg_logits, dim=1) == label).float())
 
-        return {
-            'avg_test_loss': avg_loss,
-            'avg_test_acc': avg_accuracy,
-            'log': logs,
-            'progress_bar': logs
-        }
+        # Log loss and accuracy
+        self.log("test_loss", loss, on_step=True, on_epoch=True, prog_bar=False, logger=True)
+        self.log("test_acc", joint_acc, on_step=True, on_epoch=True, prog_bar=False, logger=True)
+
+        # log modality-specific avg and losses
+        self.log("image_test_acc", image_acc, on_step=True, on_epoch=True, prog_bar=False, logger=True)
+        self.log("text_test_acc", text_acc, on_step=True, on_epoch=True, prog_bar=False, logger=True)
+
+        self.test_metrics["test_loss"].append(loss)
+        self.test_metrics["test_acc"].append(joint_acc)
+
+        # Return the loss
+        return loss
+    
+    def on_test_epoch_end(self):
+        avg_loss = torch.stack(self.test_metrics["test_loss"]).mean()
+        avg_accuracy = torch.stack(self.test_metrics["test_acc"]).mean()
+
+        self.log("avg_test_loss", avg_loss, on_step=False, on_epoch=True, prog_bar=False, logger=True)
+        self.log("avg_test_acc", avg_accuracy, on_step=False, on_epoch=True, prog_bar=False, logger=True)
+
+        self.test_metrics["test_loss"].clear()
+        self.test_metrics["test_acc"].clear()
 
     # Required for pl.LightningModule
     def configure_optimizers(self):

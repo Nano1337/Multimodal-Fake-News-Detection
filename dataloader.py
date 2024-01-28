@@ -15,7 +15,9 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 
 import transformers
+from transformers import AutoTokenizer, DistilBertForSequenceClassification
 
+from torch.utils.data.dataloader import default_collate
 
 DATA_PATH = "./data"
 PL_ASSETS_PATH = "./lightning_logs"
@@ -51,6 +53,7 @@ class MultimodalDataset(Dataset):
         df = None
         self.dataset_type = dataset_type
         self.dir_to_save_dataframe = dir_to_save_dataframe
+        self.tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
         self.saved_dataframe_filename_prefix = ""
         if Modality(modality) == Modality.TEXT:
             self.saved_dataframe_filename_prefix = "text"
@@ -147,8 +150,9 @@ class MultimodalDataset(Dataset):
         if Modality(self.modality) in [Modality.TEXT, Modality.TEXT_IMAGE, \
                                        Modality.TEXT_IMAGE_DIALOGUE]:
             text = self.data_frame.loc[idx, 'clean_title']
-            text = self.text_embedder.encode(text, convert_to_tensor=True)
             item["text"] = text
+
+            # need to write collate fn on batch to handle padding on batch
         if Modality(self.modality) in [Modality.IMAGE, Modality.TEXT_IMAGE, \
                                        Modality.TEXT_IMAGE_DIALOGUE]:
             image_path = os.path.join(IMAGES_DIR, item_id + IMAGE_EXTENSION)
@@ -161,6 +165,21 @@ class MultimodalDataset(Dataset):
             item["dialogue"] = dialogue
 
         return item
+
+    def collate_fn(self, batch): 
+
+        # extract text from all samples in batch
+        text = [sample["text"] for sample in batch]
+        # pass through tokenizer 
+        text = self.tokenizer(text, return_tensors="pt", padding=True, truncation=True)
+
+        # collate samples into batch
+        batch = default_collate(batch)
+
+        # put text tensors batch into dict
+        batch['text'] = text
+
+        return batch
 
     def _preprocess_df(self, df):
         def image_exists(row):
