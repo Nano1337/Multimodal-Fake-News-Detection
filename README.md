@@ -83,10 +83,31 @@ We ran hyperparameter tuning and found that learning rates of `1e-3` and `1e-5` 
 
 Our results are presented in the paper, which is also available in this repo at `./paper.pdf`.
 
-### Extra Notes: 
+# Extra Notes: 
 
 Train dataset size: 563612
 
 Val dataset size: 59299
 
 Test dataset size: 59271
+
+## Label Correspondences: 
+The 6-way labels are:
+- true (0)
+- satire (1)
+- false connection (2)
+- imposter content (3)
+- manipulated content (4)
+- misleading content (5)
+
+The 3-way labels are:
+- true (0)
+- fake with true text (1)
+- fake with false text (2)
+
+## TODOs: 
+
+- Figure out how to save models, make a new directory for model checkpoints
+- After loading checkpoint, run on test set to see what the performance is on there 
+- Calculate the average for the validation set
+- make reproducible with fixed random seeds and pytorch lightning's seed_everything()

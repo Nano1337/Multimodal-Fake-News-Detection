@@ -14,14 +14,13 @@ from pytorch_lightning.loggers import WandbLogger
 from sentence_transformers import SentenceTransformer
 
 from dataloader import MultimodalDataset, Modality
-from model import JointTextImageModel, JointTextImageDialogueModel, \
-    MultimodalFakeNewsDetectionModel, MultimodalFakeNewsDetectionModelWithDialogue, \
-    PrintCallback
-
+# for the default implementation, use model.py
+# TODO: write joint_model.py
+from model_ensemble import *
 torch.set_float32_matmul_precision('medium')
 
 
-# Multiprocessing for dataset batching: NUM_CPUS=24 on Yale Tangra server
+# Multiprocessing for dataset batching
 # Set to 0 and comment out torch.multiprocessing line if multiprocessing gives errors
 NUM_CPUS = 8
 
