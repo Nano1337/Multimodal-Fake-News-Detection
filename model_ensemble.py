@@ -49,8 +49,6 @@ class JointTextImageModel(nn.Module):
         super(JointTextImageModel, self).__init__()
         self.text_module = text_module # output is text_feature_dim
         self.image_module = image_module # output is image_feature_dim
-        self.fc1_text = torch.nn.Linear(in_features=text_feature_dim, out_features=hidden_size)
-        self.fc2_text = torch.nn.Linear(in_features=hidden_size, out_features=num_classes)
         self.fc1_image = torch.nn.Linear(in_features=image_feature_dim, out_features=hidden_size)
         self.fc2_image = torch.nn.Linear(in_features=hidden_size, out_features=num_classes)
 

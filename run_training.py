@@ -20,7 +20,9 @@ from dataloader import MultimodalDataset, Modality
 # for the default implementation, use model.py | model_ensemble.py | model_joint.py
 from model_ensemble import *
 torch.set_float32_matmul_precision('medium')
-seed_everything(seed=0, workers=True)
+
+seed = 1
+seed_everything(seed=seed, workers=True)
 
 
 # Multiprocessing for dataset batching
@@ -169,6 +171,7 @@ if __name__ == "__main__":
         num_workers=NUM_CPUS, 
         persistent_workers=True,
         prefetch_factor = 4,
+        collate_fn=test_dataset.collate_fn
     )
 
     hparams = {

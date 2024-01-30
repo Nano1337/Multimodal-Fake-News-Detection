@@ -12,9 +12,9 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 from sentence_transformers import SentenceTransformer
 
-import transformers
+from transformers import DistilBertForSequenceClassification
 
-NUM_CLASSES = 2
+NUM_CLASSES = 6
 BATCH_SIZE = 32
 LEARNING_RATE = 1e-4
 DROPOUT_P = 0.1
@@ -49,22 +49,11 @@ class JointTextImageModel(nn.Module):
         super(JointTextImageModel, self).__init__()
         self.text_module = text_module # output is text_feature_dim
         self.image_module = image_module # output is image_feature_dim
-        self.fc1_text = torch.nn.Linear(in_features=text_feature_dim, out_features=hidden_size)
-        self.fc2_text = torch.nn.Linear(in_features=hidden_size, out_features=num_classes)
         self.fc1_image = torch.nn.Linear(in_features=image_feature_dim, out_features=hidden_size)
         self.fc2_image = torch.nn.Linear(in_features=hidden_size, out_features=num_classes)
 
         self.loss_fn = loss_fn
         self.dropout = torch.nn.Dropout(dropout_p)
-
-        self.text_model = nn.Sequential(
-            self.text_module, 
-            nn.ReLU(), 
-            self.fc1_text,
-            nn.ReLU(), 
-            self.dropout, 
-            self.fc2_text,
-        )
 
         self.image_model = nn.Sequential(
             self.image_module, 
@@ -77,7 +66,7 @@ class JointTextImageModel(nn.Module):
 
     def forward(self, text, image, label):
         image_logits = self.image_model(image)
-        text_logits = self.text_model(text)
+        text_logits = self.text_module(**text).logits
         avg_logits = (image_logits + text_logits) / 2
 
         # nn.CrossEntropyLoss expects raw logits as model output, NOT torch.nn.functional.softmax(logits, dim=1)
@@ -238,9 +227,7 @@ class MultimodalFakeNewsDetectionModel(pl.LightningModule):
         return optimizer
 
     def _build_model(self):
-        text_module = torch.nn.Linear(
-            in_features=self.embedding_dim, out_features=self.text_feature_dim)
-
+        text_module = DistilBertForSequenceClassification.from_pretrained("distilbert-base-uncased", num_labels=NUM_CLASSES)
         image_module = torchvision.models.resnet152(pretrained=True)
         # Overwrite last layer to get features (rather than classification)
         image_module.fc = torch.nn.Linear(
