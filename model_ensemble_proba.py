@@ -64,20 +64,21 @@ class JointTextImageModel(nn.Module):
             self.fc2_image,
         )
 
-        self.logsoftmax = nn.LogSoftmax(dim=1)
+        self.softmax = nn.Softmax(dim=1)
+        self.epsilon = 1e-9
 
     def forward(self, text, image, label):
         image_logits = self.image_model(image)
-        image_logprobs = self.logsoftmax(image_logits)
+        image_probs = self.softmax(image_logits)
         text_logits = self.text_module(**text).logits
-        text_logprobs = self.logsoftmax(text_logits)
+        text_probs = self.softmax(text_logits)
 
         # nn.CrossEntropyLoss expects raw logits as model output, NOT torch.nn.functional.softmax(logits, dim=1)
         # https://pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html
-        image_loss = self.loss_fn(image_logprobs, label)
-        text_loss = self.loss_fn(text_logprobs, label)
+        image_loss = self.loss_fn(image_logits, label)
+        text_loss = self.loss_fn(text_logits, label)
 
-        return (image_logprobs, text_logprobs, image_loss, text_loss)
+        return (image_probs, text_probs, image_loss, text_loss)
 
     @classmethod
     def build_image_transform(cls, image_dim=224):
@@ -109,6 +110,9 @@ class MultimodalFakeNewsDetectionModel(pl.LightningModule):
 
         self.model = self._build_model()
 
+        self.softmax = nn.Softmax(dim=1)
+        self.epsilon = 1e-9
+
         self.val_metrics = {
             "val_loss": [],
             "val_acc": [],
@@ -132,12 +136,13 @@ class MultimodalFakeNewsDetectionModel(pl.LightningModule):
         text, image, label = batch["text"], batch["image"], batch["label"]
 
         # Get predictions and loss from the model
-        image_logprobs, text_logprobs, image_loss, text_loss = self.model(text, image, label)
+        image_probs, text_probs, image_loss, text_loss = self.model(text, image, label)
 
         # Calculate accuracy
-        image_acc = torch.mean((torch.argmax(image_logprobs, dim=1) == label).float())
-        text_acc = torch.mean((torch.argmax(text_logprobs, dim=1) == label).float())
-        avg_logprobs = (image_logprobs + text_logprobs) / 2
+        image_acc = torch.mean((torch.argmax(image_probs, dim=1) == label).float())
+        text_acc = torch.mean((torch.argmax(image_probs, dim=1) == label).float())
+        avg_probs = (image_probs + text_probs) / 2
+        avg_logprobs = torch.log(avg_probs + self.epsilon)
         joint_acc = torch.mean((torch.argmax(avg_logprobs, dim=1) == label).float())
         avg_loss = (image_loss + text_loss) / 2
 
@@ -160,12 +165,13 @@ class MultimodalFakeNewsDetectionModel(pl.LightningModule):
         text, image, label = batch["text"], batch["image"], batch["label"]
 
         # Get predictions and loss from the model
-        image_logprobs, text_logprobs, image_loss, text_loss = self.model(text, image, label)
+        image_probs, text_probs, image_loss, text_loss = self.model(text, image, label)
 
         # Calculate accuracy
-        image_acc = torch.mean((torch.argmax(image_logprobs, dim=1) == label).float())
-        text_acc = torch.mean((torch.argmax(text_logprobs, dim=1) == label).float())
-        avg_logprobs = (image_logprobs + text_logprobs) / 2
+        image_acc = torch.mean((torch.argmax(image_probs, dim=1) == label).float())
+        text_acc = torch.mean((torch.argmax(image_probs, dim=1) == label).float())
+        avg_probs = (image_probs + text_probs) / 2
+        avg_logprobs = torch.log(avg_probs + self.epsilon)
         joint_acc = torch.mean((torch.argmax(avg_logprobs, dim=1) == label).float())
         avg_loss = (image_loss + text_loss) / 2
 
@@ -200,12 +206,13 @@ class MultimodalFakeNewsDetectionModel(pl.LightningModule):
         text, image, label = batch["text"], batch["image"], batch["label"]
 
         # Get predictions and loss from the model
-        image_logprobs, text_logprobs, image_loss, text_loss = self.model(text, image, label)
+        image_probs, text_probs, image_loss, text_loss = self.model(text, image, label)
 
         # Calculate accuracy
-        image_acc = torch.mean((torch.argmax(image_logprobs, dim=1) == label).float())
-        text_acc = torch.mean((torch.argmax(text_logprobs, dim=1) == label).float())
-        avg_logprobs = (image_logprobs + text_logprobs) / 2
+        image_acc = torch.mean((torch.argmax(image_probs, dim=1) == label).float())
+        text_acc = torch.mean((torch.argmax(image_probs, dim=1) == label).float())
+        avg_probs = (image_probs + text_probs) / 2
+        avg_logprobs = torch.log(avg_probs + self.epsilon)
         joint_acc = torch.mean((torch.argmax(avg_logprobs, dim=1) == label).float())
         avg_loss = (image_loss + text_loss) / 2
 
@@ -248,7 +255,7 @@ class MultimodalFakeNewsDetectionModel(pl.LightningModule):
 
         return JointTextImageModel(
             num_classes=self.hparams.get("num_classes", NUM_CLASSES),
-            loss_fn=torch.nn.NLLLoss(),
+            loss_fn=torch.nn.CrossEntropyLoss(),
             text_module=text_module,
             image_module=image_module,
             text_feature_dim=self.text_feature_dim,

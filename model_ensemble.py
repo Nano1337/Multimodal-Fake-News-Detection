@@ -237,7 +237,7 @@ class MultimodalFakeNewsDetectionModel(pl.LightningModule):
 
     def _build_model(self):
         text_module = DistilBertForSequenceClassification.from_pretrained("distilbert-base-uncased", num_labels=NUM_CLASSES)
-        image_module = torchvision.models.resnet152(pretrained=True)
+        image_module = torchvision.models.resnet152(pretrained=True)    
         # Overwrite last layer to get features (rather than classification)
         image_module.fc = torch.nn.Linear(
             in_features=RESNET_OUT_DIM, out_features=self.image_feature_dim)

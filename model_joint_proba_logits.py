@@ -67,23 +67,39 @@ class JointTextImageModel(nn.Module):
         self.softmax = nn.Softmax(dim=1)
         self.epsilon = 1e-9
 
-    def forward(self, text, image, label):
-        image_logits = self.image_model(image)
-        image_probs = self.softmax(image_logits) 
-        text_logits = self.text_module(**text).logits
-        text_probs = self.softmax(text_logits)
+    def forward(self, text, image, label, mode="train"):
 
-        avg_probs = (image_probs + text_probs) / 2
+        if mode == "train":
 
-        avg_logprobs = torch.log(avg_probs + self.epsilon)
-        image_logprobs = torch.log(image_probs + self.epsilon)
-        text_logprobs = torch.log(text_probs + self.epsilon)
+            image_logits = self.image_model(image)
+            image_probs = self.softmax(image_logits) 
+            text_logits = self.text_module(**text).logits
+            text_probs = self.softmax(text_logits)
 
-        # nn.CrossEntropyLoss expects raw logits as model output, NOT torch.nn.functional.softmax(logits, dim=1)
-        # https://pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html
-        loss = self.loss_fn(avg_logprobs, label)
+            avg_probs = (image_probs + text_probs) / 2
 
-        return (image_logprobs, text_logprobs, avg_logprobs, loss)
+            avg_logprobs = torch.log(avg_probs + self.epsilon)
+            image_logprobs = torch.log(image_probs + self.epsilon)
+            text_logprobs = torch.log(text_probs + self.epsilon)
+
+            # nn.CrossEntropyLoss expects raw logits as model output, NOT torch.nn.functional.softmax(logits, dim=1)
+            # https://pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html
+            loss = self.loss_fn(avg_logprobs, label)
+
+            return (image_logprobs, text_logprobs, avg_logprobs, loss)
+
+        else: 
+
+            image_logits = self.image_model(image)
+            text_logits = self.text_module(**text).logits
+            avg_logits = (image_logits + text_logits) / 2
+
+            # nn.CrossEntropyLoss expects raw logits as model output, NOT torch.nn.functional.softmax(logits, dim=1)
+            # https://pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html
+            loss = self.loss_fn(image_logits, label)
+
+            return (image_logits, text_logits, avg_logits, loss)
+
 
     @classmethod
     def build_image_transform(cls, image_dim=224):
@@ -137,7 +153,7 @@ class MultimodalFakeNewsDetectionModel(pl.LightningModule):
         text, image, label = batch["text"], batch["image"], batch["label"]
 
         # Get predictions and loss from the model
-        image_logprobs, text_logprobs, avg_logprobs, loss = self.model(text, image, label)
+        image_logprobs, text_logprobs, avg_logprobs, loss = self.model(text, image, label, mode="train")
 
         # Calculate accuracy
         image_acc = torch.mean((torch.argmax(image_logprobs, dim=1) == label).float())
@@ -161,12 +177,12 @@ class MultimodalFakeNewsDetectionModel(pl.LightningModule):
         text, image, label = batch["text"], batch["image"], batch["label"]
 
         # Get predictions and loss from the model
-        image_logprobs, text_logprobs, avg_logprobs, loss = self.model(text, image, label)
+        image_logits, text_logits, avg_logits, loss = self.model(text, image, label, mode="val")
 
         # Calculate accuracy
-        image_acc = torch.mean((torch.argmax(image_logprobs, dim=1) == label).float())
-        text_acc = torch.mean((torch.argmax(text_logprobs, dim=1) == label).float())
-        joint_acc = torch.mean((torch.argmax(avg_logprobs, dim=1) == label).float())
+        image_acc = torch.mean((torch.argmax(image_logits, dim=1) == label).float())
+        text_acc = torch.mean((torch.argmax(text_logits, dim=1) == label).float())
+        joint_acc = torch.mean((torch.argmax(avg_logits, dim=1) == label).float())
 
         # Log loss and accuracy
         self.log("val_loss", loss, on_step=True, on_epoch=True, prog_bar=False, logger=True)
@@ -199,12 +215,12 @@ class MultimodalFakeNewsDetectionModel(pl.LightningModule):
         text, image, label = batch["text"], batch["image"], batch["label"]
 
         # Get predictions and loss from the model
-        image_logprobs, text_logprobs, avg_logprobs, loss = self.model(text, image, label)
+        image_logits, text_logits, avg_logits, loss = self.model(text, image, label, mode="test")
 
         # Calculate accuracy
-        image_acc = torch.mean((torch.argmax(image_logprobs, dim=1) == label).float())
-        text_acc = torch.mean((torch.argmax(text_logprobs, dim=1) == label).float())
-        joint_acc = torch.mean((torch.argmax(avg_logprobs, dim=1) == label).float())
+        image_acc = torch.mean((torch.argmax(image_logits, dim=1) == label).float())
+        text_acc = torch.mean((torch.argmax(text_logits, dim=1) == label).float())
+        joint_acc = torch.mean((torch.argmax(avg_logits, dim=1) == label).float())
 
         # Log loss and accuracy
         self.log("test_loss", loss, on_step=True, on_epoch=True, prog_bar=False, logger=True)

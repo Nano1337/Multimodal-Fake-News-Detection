@@ -18,7 +18,7 @@ from sentence_transformers import SentenceTransformer
 
 from dataloader import MultimodalDataset, Modality
 # for the default implementation, use model.py | model_ensemble.py | model_joint.py | model_joint_proba
-from model_joint_proba import *
+from model_joint_proba_logits import *
 torch.set_float32_matmul_precision('medium')
 
 seed = 1
